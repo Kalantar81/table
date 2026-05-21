@@ -1,3 +1,8 @@
 import { Routes } from '@angular/router';
 
-export const routes: Routes = [];
+import { Table } from './table/table';
+
+export const routes: Routes = [
+  { path: '', component: Table },
+  { path: '**', redirectTo: '' },
+];

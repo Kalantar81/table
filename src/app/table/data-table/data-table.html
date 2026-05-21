@@ -1,0 +1,328 @@
+<div
+  class="dt-wrapper"
+  [class.dt-striped]="stripedRows()"
+  [class.dt-gridlines]="showGridlines()"
+  role="grid"
+>
+  <div class="dt-toolbar">
+    <div class="dt-search-cols">
+      <button
+        type="button"
+        class="dt-search-cols-trigger"
+        [class.is-open]="searchColumnsMenuOpen()"
+        (click)="$event.stopPropagation(); toggleSearchColumnsMenu()"
+      >
+        <span>Search columns</span>
+        @if (selectedSearchFields().length > 0) {
+          <span class="dt-search-cols-count">{{ selectedSearchFields().length }}</span>
+        }
+        <svg viewBox="0 0 24 24" class="dt-icon" aria-hidden="true">
+          <path d="M7 10l5 5 5-5z" fill="currentColor" />
+        </svg>
+      </button>
+
+      @if (searchColumnsMenuOpen()) {
+        <div class="dt-search-cols-overlay" (click)="$event.stopPropagation()">
+          <div class="dt-search-cols-header">
+            <span>Select columns</span>
+            @if (selectedSearchFields().length > 0) {
+              <button type="button" class="dt-btn dt-btn-text" (click)="clearAllSearchFields()">
+                Clear
+              </button>
+            }
+          </div>
+          @for (col of columns(); track col.field) {
+            <label class="dt-search-cols-item">
+              <input
+                type="checkbox"
+                [checked]="isSearchFieldSelected(col.field)"
+                (change)="toggleSearchField(col.field)"
+              />
+              <span>{{ col.header }}</span>
+            </label>
+          }
+        </div>
+      }
+
+      @for (col of selectedSearchColumns(); track col.field) {
+        <span class="dt-chip">
+          {{ col.header }}
+          <button
+            type="button"
+            class="dt-chip-remove"
+            [attr.aria-label]="'Remove ' + col.header"
+            (click)="removeSearchField(col.field)"
+          >
+            ×
+          </button>
+        </span>
+      }
+    </div>
+
+    <span class="dt-search">
+      <svg viewBox="0 0 24 24" class="dt-icon" aria-hidden="true">
+        <path
+          d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm0 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm6.32 8.906 4.387 4.387a1 1 0 0 1-1.414 1.414l-4.387-4.387a8 8 0 1 1 1.414-1.414z"
+          fill="currentColor"
+        />
+      </svg>
+      <input
+        type="text"
+        class="dt-input"
+        placeholder="Global search..."
+        [ngModel]="globalFilterValue()"
+        (ngModelChange)="onGlobalFilter($event)"
+      />
+    </span>
+  </div>
+
+  <div class="dt-head" role="row" [style.gridTemplateColumns]="columnTracks()">
+    @for (col of columns(); track col.field) {
+      <div
+        class="dt-th"
+        role="columnheader"
+        [class.dt-sortable]="col.sortable"
+        [style.textAlign]="col.align"
+        (click)="onSort(col)"
+      >
+        <span class="dt-th-inner">
+          <span class="dt-th-title">{{ col.header }}</span>
+
+          @if (col.sortable) {
+            <span class="dt-sort-icon" [attr.data-state]="sortIcon(col)" aria-hidden="true">
+              @if (sortIcon(col) === 'none') {
+                <svg viewBox="0 0 24 24" class="dt-icon">
+                  <path d="M7 10l5-5 5 5H7zm0 4l5 5 5-5H7z" fill="currentColor" />
+                </svg>
+              } @else if (sortIcon(col) === 'asc') {
+                <svg viewBox="0 0 24 24" class="dt-icon">
+                  <path d="M7 14l5-5 5 5H7z" fill="currentColor" />
+                </svg>
+              } @else {
+                <svg viewBox="0 0 24 24" class="dt-icon">
+                  <path d="M7 10l5 5 5-5H7z" fill="currentColor" />
+                </svg>
+              }
+            </span>
+          }
+
+          @if (col.filterable) {
+            <button
+              type="button"
+              class="dt-filter-trigger"
+              [class.is-active]="isFilterActive(col.field)"
+              [class.is-open]="openFilterField() === col.field"
+              [attr.aria-label]="'Filter ' + col.header"
+              (click)="$event.stopPropagation(); toggleFilter(col.field)"
+            >
+              <svg viewBox="0 0 24 24" class="dt-icon">
+                <path
+                  d="M3 5h18l-7 9v6l-4-2v-4L3 5z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          }
+        </span>
+
+        @if (col.filterable && openFilterField() === col.field) {
+          <div class="dt-filter-overlay" (click)="$event.stopPropagation()">
+            <label class="dt-filter-label">Match mode</label>
+            <select
+              class="dt-select"
+              [ngModel]="filterFor(col).matchMode"
+              (ngModelChange)="setFilterMatchMode(col, $event)"
+            >
+              @for (mm of matchModes(col); track mm.value) {
+                <option [value]="mm.value">{{ mm.label }}</option>
+              }
+            </select>
+
+            <label class="dt-filter-label">Value</label>
+            @switch (col.filterType) {
+              @case ('numeric') {
+                <input
+                  type="number"
+                  class="dt-input"
+                  [ngModel]="filterFor(col).value"
+                  (ngModelChange)="setFilterValue(col, $event)"
+                />
+              }
+              @case ('date') {
+                <input
+                  type="date"
+                  class="dt-input"
+                  [ngModel]="filterFor(col).value"
+                  (ngModelChange)="setFilterValue(col, $event)"
+                />
+              }
+              @case ('boolean') {
+                <select
+                  class="dt-select"
+                  [ngModel]="filterFor(col).value"
+                  (ngModelChange)="setFilterValue(col, $event)"
+                >
+                  <option [ngValue]="null">--</option>
+                  <option [ngValue]="true">True</option>
+                  <option [ngValue]="false">False</option>
+                </select>
+              }
+              @default {
+                <input
+                  type="text"
+                  class="dt-input"
+                  placeholder="Search..."
+                  [ngModel]="filterFor(col).value"
+                  (ngModelChange)="setFilterValue(col, $event)"
+                />
+              }
+            }
+
+            <div class="dt-filter-actions">
+              <button type="button" class="dt-btn dt-btn-text" (click)="clearFilter(col)">
+                Clear
+              </button>
+              <button type="button" class="dt-btn dt-btn-primary" (click)="closeFilter()">
+                Apply
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  @if (virtualScroll()) {
+    <cdk-virtual-scroll-viewport
+      class="dt-viewport"
+      [itemSize]="rowHeight()"
+      [minBufferPx]="rowHeight() * 10"
+      [maxBufferPx]="rowHeight() * 20"
+    >
+      <div
+        *cdkVirtualFor="let row of pagedValue(); trackBy: trackRow(); let i = index; let even = even"
+        class="dt-row"
+        [class.dt-row-even]="even"
+        role="row"
+        [style.height.px]="rowHeight()"
+        [style.gridTemplateColumns]="columnTracks()"
+      >
+        @for (col of columns(); track col.field) {
+          <div class="dt-td" role="gridcell" [style.textAlign]="col.align">
+            {{ row[col.field] }}
+          </div>
+        }
+      </div>
+      @if (totalRecords() === 0) {
+        <div class="dt-empty">{{ emptyMessage() }}</div>
+      }
+    </cdk-virtual-scroll-viewport>
+  } @else {
+    <div class="dt-body">
+      @for (row of pagedValue(); track trackRow()($index, row); let even = $even) {
+        <div
+          class="dt-row"
+          [class.dt-row-even]="even"
+          role="row"
+          [style.gridTemplateColumns]="columnTracks()"
+        >
+          @for (col of columns(); track col.field) {
+            <div class="dt-td" role="gridcell" [style.textAlign]="col.align">
+              {{ row[col.field] }}
+            </div>
+          }
+        </div>
+      } @empty {
+        <div class="dt-empty">{{ emptyMessage() }}</div>
+      }
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="dt-loader-overlay" role="status" aria-live="polite">
+      <div class="dt-loader-spinner" aria-hidden="true"></div>
+      <span class="dt-loader-text">Loading…</span>
+    </div>
+  }
+
+  <div class="dt-paginator">
+    <div class="dt-paginator-left">
+      <span class="dt-rows-label">Rows per page:</span>
+      <select
+        class="dt-select dt-rows-select"
+        [ngModel]="rows()"
+        (ngModelChange)="onRowsChange($event)"
+      >
+        @for (n of rowsPerPageOptions(); track n) {
+          <option [ngValue]="n">{{ n }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="dt-paginator-center">
+      <button
+        type="button"
+        class="dt-pg-btn"
+        (click)="goFirst()"
+        [disabled]="currentPage() === 0"
+        aria-label="First page"
+      >
+        <svg viewBox="0 0 24 24" class="dt-icon">
+          <path d="M18 17l-5-5 5-5v10zM6 6h2v12H6z" fill="currentColor" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="dt-pg-btn"
+        (click)="goPrev()"
+        [disabled]="currentPage() === 0"
+        aria-label="Previous page"
+      >
+        <svg viewBox="0 0 24 24" class="dt-icon">
+          <path d="M15 17l-5-5 5-5v10z" fill="currentColor" />
+        </svg>
+      </button>
+
+      @for (p of pageNumbers(); track p) {
+        <button
+          type="button"
+          class="dt-pg-btn dt-pg-number"
+          [class.is-active]="p === currentPage()"
+          (click)="goToPage(p)"
+        >
+          {{ p + 1 }}
+        </button>
+      }
+
+      <button
+        type="button"
+        class="dt-pg-btn"
+        (click)="goNext()"
+        [disabled]="currentPage() >= totalPages() - 1"
+        aria-label="Next page"
+      >
+        <svg viewBox="0 0 24 24" class="dt-icon">
+          <path d="M9 7l5 5-5 5V7z" fill="currentColor" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="dt-pg-btn"
+        (click)="goLast()"
+        [disabled]="currentPage() >= totalPages() - 1"
+        aria-label="Last page"
+      >
+        <svg viewBox="0 0 24 24" class="dt-icon">
+          <path d="M6 7l5 5-5 5V7zm10-1h2v12h-2z" fill="currentColor" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="dt-paginator-right">
+      <span class="dt-range">{{ rangeText() }}</span>
+    </div>
+  </div>
+</div>

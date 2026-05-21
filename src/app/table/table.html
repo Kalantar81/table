@@ -1,0 +1,16 @@
+<section class="page">
+  <header class="page-header">
+    <h1>Customers</h1>
+    <p>Virtualized table with sorting, per-column filtering and debounced global search.</p>
+  </header>
+
+  <app-data-table
+    [value]="customers()"
+    [columns]="columns()"
+    [virtualScroll]="true"
+    [rowHeight]="40"
+    [initialRows]="100"
+    [rowsPerPageOptions]="[25, 50, 100, 250, 500]"
+    [trackBy]="trackById"
+  />
+</section>
