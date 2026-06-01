@@ -18,48 +18,23 @@ import { FormsModule } from '@angular/forms';
 
 import {
   ColumnFilterState,
-  ColumnFilterType,
   DataTableColumn,
   FilterMatchMode,
   SortState,
   defaultMatchMode,
   matchModesFor,
 } from './data-table-types';
-
-interface PreparedColumnFilter {
-  field: string;
-  matchMode: FilterMatchMode;
-  rawValue: any;
-  textValue: string;
-  numberValue: number;
-  dateMs: number;
-}
-
-interface GlobalFilter {
-  q: string;
-  fields: string[];
-}
-
-interface ColumnIndex {
-  filterType: ColumnFilterType | undefined;
-  collator: boolean;
-  raw: any[];
-  lower: string[];
-  num?: Float64Array;
-  ms?: Float64Array;
-  categoryIndex?: Map<string, Uint32Array>;
-}
-
-interface Dataset<T> {
-  rows: T[];
-  rowCount: number;
-  byField: Map<string, ColumnIndex>;
-  allIndices: Uint32Array;
-}
+import {
+  buildDataset,
+  Dataset,
+  EMPTY_INDICES,
+  GlobalFilter,
+  PreparedColumnFilter,
+  runPipeline,
+} from './data-table.pipeline';
+import { WorkerResponse } from './data-table.worker-types';
 
 const HEAVY_THRESHOLD = 50_000;
-const EMPTY_INDICES = new Uint32Array(0);
-const COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 @Component({
   selector: 'app-data-table',
@@ -108,6 +83,9 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   private datasetRaf = 0;
   private pipelineRaf = 0;
 
+  /** Off-main-thread filter/sort engine; null when Worker is unavailable (SSR/tests). */
+  private readonly worker = createPipelineWorker();
+
   private readonly viewport = viewChild(CdkVirtualScrollViewport);
 
   readonly selectedSearchColumns = computed(() => {
@@ -119,6 +97,11 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   });
 
   constructor() {
+    if (this.worker) {
+      this.worker.onmessage = ({ data }: MessageEvent<WorkerResponse>) =>
+        this.onWorkerMessage(data);
+    }
+
     effect((onCleanup) => {
       const open = this.openFilterField();
       if (!open) return;
@@ -159,13 +142,30 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
     if (this.debounceHandle) clearTimeout(this.debounceHandle);
     if (this.datasetRaf) cancelAnimationFrame(this.datasetRaf);
     if (this.pipelineRaf) cancelAnimationFrame(this.pipelineRaf);
+    this.worker?.terminate();
   }
 
   private scheduleDatasetBuild(rows: T[], cols: DataTableColumn<T>[]) {
     const seq = ++this.datasetSeq;
     if (this.datasetRaf) cancelAnimationFrame(this.datasetRaf);
+    this.datasetRaf = 0;
 
     const heavy = rows.length >= HEAVY_THRESHOLD;
+
+    if (this.worker) {
+      // Hand the rows off to the worker, which owns the full search index.
+      // The main thread keeps only a thin dataset for rendering paged rows.
+      if (heavy) this.loading.set(true);
+      ++this.pipelineSeq;
+      this.worker.postMessage({
+        type: 'dataset',
+        datasetSeq: seq,
+        rows,
+        cols: cols.map((c) => ({ field: c.field, filterType: c.filterType, collator: c.collator })),
+      });
+      this.dataset.set({ rows, rowCount: rows.length, byField: new Map(), allIndices: EMPTY_INDICES });
+      return;
+    }
 
     const run = () => {
       this.datasetRaf = 0;
@@ -202,12 +202,24 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
 
     const heavy = ds.rowCount >= HEAVY_THRESHOLD;
 
+    if (this.worker) {
+      // Filtering (incl. global search) and sorting run off the main thread.
+      if (heavy) this.loading.set(true);
+      this.worker.postMessage({
+        type: 'pipeline',
+        datasetSeq: this.datasetSeq,
+        pipelineSeq: seq,
+        prepared,
+        global,
+        sort,
+      });
+      return;
+    }
+
     const run = () => {
       this.pipelineRaf = 0;
       if (seq !== this.pipelineSeq) return;
-      const filtered = runFilter(ds, prepared, global);
-      if (seq !== this.pipelineSeq) return;
-      const sorted = runSort(filtered, ds, sort);
+      const sorted = runPipeline(ds, prepared, global, sort);
       if (seq !== this.pipelineSeq) return;
       this.sortedIndices.set(sorted);
       this.loading.set(false);
@@ -219,6 +231,14 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
     } else {
       run();
     }
+  }
+
+  private onWorkerMessage(data: WorkerResponse) {
+    if (data.type !== 'result') return;
+    // Drop results superseded by a newer request.
+    if (data.pipelineSeq !== this.pipelineSeq) return;
+    this.sortedIndices.set(data.indices);
+    this.loading.set(false);
   }
 
   private readonly preparedFilters = computed<PreparedColumnFilter[]>(() => {
@@ -476,209 +496,16 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   protected readonly Math = Math;
 }
 
-function buildDataset<T extends Record<string, any>>(
-  rows: T[],
-  cols: DataTableColumn<T>[],
-): Dataset<T> {
-  const n = rows.length;
-  const byField = new Map<string, ColumnIndex>();
-  for (const col of cols) {
-    const raw: any[] = new Array(n);
-    const lower: string[] = new Array(n);
-    let num: Float64Array | undefined;
-    let ms: Float64Array | undefined;
-    if (col.filterType === 'numeric') num = new Float64Array(n);
-    if (col.filterType === 'date') ms = new Float64Array(n);
-    for (let i = 0; i < n; i++) {
-      const v = rows[i][col.field];
-      raw[i] = v;
-      lower[i] = v == null ? '' : String(v).toLowerCase();
-      if (num) num[i] = v == null ? NaN : Number(v);
-      if (ms) ms[i] = v == null ? NaN : new Date(v as any).getTime();
-    }
-    byField.set(col.field, {
-      filterType: col.filterType,
-      collator: !!col.collator,
-      raw,
-      lower,
-      num,
-      ms,
-    });
+/**
+ * Creates the dedicated worker that runs filtering (including global search)
+ * and sorting off the main thread. Returns null when Worker is not available
+ * (e.g. server-side rendering or unit tests) so callers fall back to sync work.
+ */
+function createPipelineWorker(): Worker | null {
+  if (typeof Worker === 'undefined') return null;
+  try {
+    return new Worker(new URL('./data-table.worker', import.meta.url));
+  } catch {
+    return null;
   }
-  const allIndices = new Uint32Array(n);
-  for (let i = 0; i < n; i++) allIndices[i] = i;
-  return { rows, rowCount: n, byField, allIndices };
-}
-
-function runFilter<T>(
-  ds: Dataset<T>,
-  prepared: PreparedColumnFilter[],
-  global: GlobalFilter | null,
-): Uint32Array {
-  if (prepared.length === 0 && !global) return ds.allIndices;
-
-  const n = ds.rowCount;
-
-  if (prepared.length === 1 && !global && isCategoricalEquals(prepared[0], ds)) {
-    return getCategoryIndices(ds.byField.get(prepared[0].field)!, prepared[0].textValue);
-  }
-
-  const preparedCols: (ColumnIndex | undefined)[] = prepared.map((pf) =>
-    ds.byField.get(pf.field),
-  );
-  const globalCols: (ColumnIndex | undefined)[] = global
-    ? global.fields.map((f) => ds.byField.get(f))
-    : [];
-  const q = global?.q ?? '';
-
-  const out = new Uint32Array(n);
-  let count = 0;
-
-  for (let i = 0; i < n; i++) {
-    let keep = true;
-    for (let j = 0; j < prepared.length; j++) {
-      const col = preparedCols[j];
-      if (!col || !matchesCell(col, i, prepared[j])) {
-        keep = false;
-        break;
-      }
-    }
-    if (keep && global) {
-      let hit = false;
-      for (let j = 0; j < globalCols.length; j++) {
-        const col = globalCols[j];
-        if (!col) continue;
-        if (col.lower[i].includes(q)) {
-          hit = true;
-          break;
-        }
-      }
-      if (!hit) keep = false;
-    }
-    if (keep) out[count++] = i;
-  }
-  return count === n ? ds.allIndices : out.slice(0, count);
-}
-
-function isCategoricalEquals<T>(pf: PreparedColumnFilter, ds: Dataset<T>): boolean {
-  if (pf.matchMode !== 'equals') return false;
-  const col = ds.byField.get(pf.field);
-  if (!col) return false;
-  return col.filterType === 'text' || col.filterType === undefined;
-}
-
-function getCategoryIndices(col: ColumnIndex, valueLower: string): Uint32Array {
-  if (!col.categoryIndex) buildCategoryIndex(col);
-  return col.categoryIndex!.get(valueLower) ?? EMPTY_INDICES;
-}
-
-function buildCategoryIndex(col: ColumnIndex) {
-  const lower = col.lower;
-  const tmp = new Map<string, number[]>();
-  for (let i = 0; i < lower.length; i++) {
-    const v = lower[i];
-    const arr = tmp.get(v);
-    if (arr) arr.push(i);
-    else tmp.set(v, [i]);
-  }
-  const final = new Map<string, Uint32Array>();
-  tmp.forEach((arr, k) => final.set(k, Uint32Array.from(arr)));
-  col.categoryIndex = final;
-}
-
-function matchesCell(col: ColumnIndex, i: number, pf: PreparedColumnFilter): boolean {
-  const raw = col.raw[i];
-  if (raw === null || raw === undefined) return false;
-  switch (pf.matchMode) {
-    case 'startsWith':
-      return col.lower[i].startsWith(pf.textValue);
-    case 'contains':
-      return col.lower[i].includes(pf.textValue);
-    case 'notContains':
-      return !col.lower[i].includes(pf.textValue);
-    case 'endsWith':
-      return col.lower[i].endsWith(pf.textValue);
-    case 'equals':
-      if (col.num) return col.num[i] === pf.numberValue;
-      if (typeof raw === 'boolean') return raw === pf.rawValue;
-      return col.lower[i] === pf.textValue;
-    case 'notEquals':
-      if (col.num) return col.num[i] !== pf.numberValue;
-      if (typeof raw === 'boolean') return raw !== pf.rawValue;
-      return col.lower[i] !== pf.textValue;
-    case 'lt':
-      return (col.num ? col.num[i] : Number(raw)) < pf.numberValue;
-    case 'lte':
-      return (col.num ? col.num[i] : Number(raw)) <= pf.numberValue;
-    case 'gt':
-      return (col.num ? col.num[i] : Number(raw)) > pf.numberValue;
-    case 'gte':
-      return (col.num ? col.num[i] : Number(raw)) >= pf.numberValue;
-    case 'dateIs':
-      return sameDayMs(col.ms ? col.ms[i] : new Date(raw).getTime(), pf.dateMs);
-    case 'dateIsNot':
-      return !sameDayMs(col.ms ? col.ms[i] : new Date(raw).getTime(), pf.dateMs);
-    case 'dateBefore':
-      return (col.ms ? col.ms[i] : new Date(raw).getTime()) < pf.dateMs;
-    case 'dateAfter':
-      return (col.ms ? col.ms[i] : new Date(raw).getTime()) > pf.dateMs;
-    default:
-      return true;
-  }
-}
-
-function runSort<T>(
-  indices: Uint32Array,
-  ds: Dataset<T>,
-  sort: SortState | null,
-): Uint32Array {
-  if (!sort) return indices;
-  const col = ds.byField.get(sort.field);
-  if (!col) return indices;
-
-  const order = sort.order;
-  const result = new Uint32Array(indices);
-
-  if (col.num) {
-    const num = col.num;
-    result.sort((a, b) => {
-      const va = num[a];
-      const vb = num[b];
-      if (Number.isNaN(va)) return Number.isNaN(vb) ? 0 : 1;
-      if (Number.isNaN(vb)) return -1;
-      return (va < vb ? -1 : va > vb ? 1 : 0) * order;
-    });
-  } else if (col.ms) {
-    const ms = col.ms;
-    result.sort((a, b) => {
-      const va = ms[a];
-      const vb = ms[b];
-      if (Number.isNaN(va)) return Number.isNaN(vb) ? 0 : 1;
-      if (Number.isNaN(vb)) return -1;
-      return (va < vb ? -1 : va > vb ? 1 : 0) * order;
-    });
-  } else {
-    const lower = col.lower;
-    if (col.collator) {
-      result.sort((a, b) => COLLATOR.compare(lower[a], lower[b]) * order);
-    } else {
-      result.sort((a, b) => {
-        const xa = lower[a];
-        const xb = lower[b];
-        return (xa < xb ? -1 : xa > xb ? 1 : 0) * order;
-      });
-    }
-  }
-  return result;
-}
-
-function sameDayMs(cellMs: number, refMs: number): boolean {
-  if (!Number.isFinite(cellMs) || !Number.isFinite(refMs)) return false;
-  const da = new Date(cellMs);
-  const db = new Date(refMs);
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
-  );
 }
