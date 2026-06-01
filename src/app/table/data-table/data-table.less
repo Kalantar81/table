@@ -262,6 +262,12 @@
   background-size: 14px;
 }
 
+.dt-head-clip {
+  flex-shrink: 0;
+  overflow: hidden;
+  z-index: 2;
+}
+
 .dt-head {
   display: grid;
   background: var(--dt-header-bg);
@@ -415,6 +421,26 @@
 
 :host ::ng-deep .cdk-virtual-scroll-content-wrapper {
   width: 100%;
+}
+
+/* Horizontal scroll: the body owns the X scrollbar, columns keep fixed widths,
+   and the header (in its overflow-hidden clip) is translated to follow along. */
+.dt-wrapper.dt-hscroll {
+  .dt-head,
+  .dt-row {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .dt-viewport,
+  .dt-body {
+    overflow-x: auto;
+  }
+}
+
+:host ::ng-deep .dt-hscroll .cdk-virtual-scroll-content-wrapper {
+  width: max-content;
+  min-width: 100%;
 }
 
 .dt-body {

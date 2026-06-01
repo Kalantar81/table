@@ -1,7 +1,8 @@
 import { Component, signal } from '@angular/core';
+import { httpResource } from '@angular/common/http';
 
 import { DataTable } from './data-table/data-table';
-import { DataTableColumn } from './data-table/data-table-types';
+import { TableConfig } from './table-config';
 
 interface Customer {
   id: number;
@@ -23,15 +24,8 @@ const ROW_COUNT = 50_000;
   styleUrl: './table.less',
 })
 export class Table {
-  readonly columns = signal<DataTableColumn<Customer>[]>([
-    { field: 'id', header: 'ID', sortable: true, filterable: true, filterType: 'numeric', width: '90px', align: 'right' },
-    { field: 'name', header: 'Name', sortable: true, filterable: true, filterType: 'text' },
-    { field: 'country', header: 'Country', sortable: true, filterable: true, filterType: 'text', width: '140px' },
-    { field: 'company', header: 'Company', sortable: true, filterable: true, filterType: 'text' },
-    { field: 'status', header: 'Status', sortable: true, filterable: true, filterType: 'text', width: '140px' },
-    { field: 'balance', header: 'Balance', sortable: true, filterable: true, filterType: 'numeric', width: '140px', align: 'right' },
-    { field: 'joined', header: 'Joined', sortable: true, filterable: true, filterType: 'date', width: '140px' },
-  ]);
+  /** Table layout (columns, page sizes…) loaded at runtime from public/table.config.json. */
+  readonly config = httpResource<TableConfig<Customer>>(() => 'table.config.json');
 
   readonly customers = signal<Customer[]>(generateCustomers(ROW_COUNT));
 

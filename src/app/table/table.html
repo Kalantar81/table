@@ -4,13 +4,22 @@
     <p>Virtualized table with sorting, per-column filtering and debounced global search.</p>
   </header>
 
-  <app-data-table
-    [value]="customers()"
-    [columns]="columns()"
-    [virtualScroll]="true"
-    [rowHeight]="40"
-    [initialRows]="100"
-    [rowsPerPageOptions]="[25, 50, 100, 250, 500]"
-    [trackBy]="trackById"
-  />
+  @if (config.value(); as cfg) {
+    <app-data-table
+      [value]="customers()"
+      [columns]="cfg.columns"
+      [virtualScroll]="cfg.virtualScroll ?? true"
+      [rowHeight]="cfg.rowHeight ?? 41"
+      [initialRows]="cfg.initialRows ?? 10"
+      [rowsPerPageOptions]="cfg.rowsPerPageOptions ?? [5, 10, 25, 50]"
+      [tableWidth]="cfg.width ?? ''"
+      [tableHeight]="cfg.height ?? ''"
+      [horizontalScroll]="cfg.horizontalScroll ?? false"
+      [trackBy]="trackById"
+    />
+  } @else if (config.error()) {
+    <p class="config-error">Failed to load table configuration.</p>
+  } @else {
+    <p class="config-loading">Loading configuration…</p>
+  }
 </section>

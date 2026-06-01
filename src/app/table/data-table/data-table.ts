@@ -59,6 +59,9 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   readonly virtualScroll = input<boolean>(true);
   readonly rowHeight = input<number>(41);
   readonly globalFilterDebounceMs = input<number>(200);
+  readonly tableWidth = input<string>('');
+  readonly tableHeight = input<string>('');
+  readonly horizontalScroll = input<boolean>(false);
 
   readonly sort = signal<SortState | null>(null);
   readonly filters = signal<Record<string, ColumnFilterState>>({});
@@ -87,6 +90,7 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   private readonly worker = createPipelineWorker();
 
   private readonly viewport = viewChild(CdkVirtualScrollViewport);
+  private readonly headEl = viewChild<ElementRef<HTMLElement>>('headEl');
 
   readonly selectedSearchColumns = computed(() => {
     const selected = this.selectedSearchFields();
@@ -316,11 +320,14 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
     return out;
   });
 
-  readonly columnTracks = computed(() =>
-    this.columns()
-      .map((c) => c.width ?? 'minmax(120px, 1fr)')
-      .join(' '),
-  );
+  readonly columnTracks = computed(() => {
+    // With horizontal scroll on, columns keep fixed widths so the grid can
+    // grow past the container; otherwise they flex to fill the available width.
+    const fallback = this.horizontalScroll() ? '150px' : 'minmax(120px, 1fr)';
+    return this.columns()
+      .map((c) => c.width ?? fallback)
+      .join(' ');
+  });
 
   readonly trackRow = computed(() => {
     const userFn = this.trackBy();
@@ -431,6 +438,17 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
     this.rows.set(Number(rows));
     this.first.set(0);
     requestAnimationFrame(() => this.viewport()?.scrollToOffset(0));
+  }
+
+  /**
+   * Keeps the (clipped) header aligned with the body's horizontal scroll
+   * position. The body owns the horizontal scrollbar so the vertical one
+   * stays pinned to the visible right edge; the header just follows along.
+   */
+  onBodyScroll(target: EventTarget | null) {
+    if (!this.horizontalScroll()) return;
+    const head = this.headEl()?.nativeElement;
+    if (head) head.style.transform = `translateX(${-(target as HTMLElement).scrollLeft}px)`;
   }
 
   rangeText(): string {

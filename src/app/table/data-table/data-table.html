@@ -2,6 +2,10 @@
   class="dt-wrapper"
   [class.dt-striped]="stripedRows()"
   [class.dt-gridlines]="showGridlines()"
+  [class.dt-hscroll]="horizontalScroll()"
+  [style.width]="tableWidth() || null"
+  [style.height]="tableHeight() || null"
+  [style.flex]="tableHeight() ? 'none' : null"
   role="grid"
 >
   <div class="dt-toolbar">
@@ -76,7 +80,8 @@
     </span>
   </div>
 
-  <div class="dt-head" role="row" [style.gridTemplateColumns]="columnTracks()">
+  <div class="dt-head-clip">
+  <div #headEl class="dt-head" role="row" [style.gridTemplateColumns]="columnTracks()">
     @for (col of columns(); track col.field) {
       <div
         class="dt-th"
@@ -194,11 +199,13 @@
       </div>
     }
   </div>
+  </div>
 
   @if (virtualScroll()) {
     <cdk-virtual-scroll-viewport
       class="dt-viewport"
       [itemSize]="rowHeight()"
+      (scroll)="onBodyScroll($event.target)"
       [minBufferPx]="rowHeight() * 10"
       [maxBufferPx]="rowHeight() * 20"
     >
@@ -221,7 +228,7 @@
       }
     </cdk-virtual-scroll-viewport>
   } @else {
-    <div class="dt-body">
+    <div class="dt-body" (scroll)="onBodyScroll($event.target)">
       @for (row of pagedValue(); track trackRow()($index, row); let even = $even) {
         <div
           class="dt-row"
