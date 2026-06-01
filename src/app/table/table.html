@@ -5,23 +5,30 @@
   </header>
 
   @if (config.value(); as cfg) {
-    @if (data.isLoading()) {
-      <p class="data-status">Loading {{ cfg.count }} entities…</p>
-    } @else if (data.error()) {
-      <p class="data-status data-status-error">Failed to load data from {{ cfg.dataUrl }}.</p>
+    @if (loading() && rows().length === 0) {
+      <div class="data-loader" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Loading {{ cfg.count }} entities…</span>
+      </div>
+    } @else {
+      @if (loading()) {
+        <p class="data-status">Loaded {{ rows().length }} of {{ cfg.count }} entities…</p>
+      } @else if (loadError()) {
+        <p class="data-status data-status-error">Failed to load data from {{ cfg.dataUrl }}.</p>
+      }
+      <app-data-table
+        [value]="rows()"
+        [columns]="cfg.columns"
+        [virtualScroll]="cfg.virtualScroll ?? true"
+        [rowHeight]="cfg.rowHeight ?? 41"
+        [initialRows]="cfg.initialRows ?? 10"
+        [rowsPerPageOptions]="cfg.rowsPerPageOptions ?? [5, 10, 25, 50]"
+        [tableWidth]="cfg.width ?? ''"
+        [tableHeight]="cfg.height ?? ''"
+        [horizontalScroll]="cfg.horizontalScroll ?? false"
+        [trackBy]="trackById"
+      />
     }
-    <app-data-table
-      [value]="rows()"
-      [columns]="cfg.columns"
-      [virtualScroll]="cfg.virtualScroll ?? true"
-      [rowHeight]="cfg.rowHeight ?? 41"
-      [initialRows]="cfg.initialRows ?? 10"
-      [rowsPerPageOptions]="cfg.rowsPerPageOptions ?? [5, 10, 25, 50]"
-      [tableWidth]="cfg.width ?? ''"
-      [tableHeight]="cfg.height ?? ''"
-      [horizontalScroll]="cfg.horizontalScroll ?? false"
-      [trackBy]="trackById"
-    />
   } @else if (config.error()) {
     <p class="config-error">Failed to load table configuration.</p>
   } @else {

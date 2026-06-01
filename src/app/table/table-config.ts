@@ -21,9 +21,31 @@ export interface TableConfig<T = TableRow> {
   rowsPath?: string;
   /**
    * Name of the query parameter used to request a page size from `dataUrl`.
-   * Defaults to "_quantity" (FakerAPI). Set to "" to disable paging params.
+   * Defaults to "_quantity" (FakerAPI). Set to "" to disable the size param.
    */
   quantityParam?: string;
+  /**
+   * How many rows to request per chunk (i.e. the page size sent via
+   * `quantityParam`). Data is fetched in chunks of this size until `count` is
+   * reached, and each chunk is rendered as soon as it arrives. Defaults to 500.
+   */
+  chunkSize?: number;
+  /**
+   * How the source paginates across chunks. When omitted, every chunk is
+   * requested with the same params (suitable for mocks like FakerAPI). For a
+   * real backend, set this so each chunk carries its page/offset.
+   */
+  pagination?: {
+    /** Query param carrying the page number or row offset, e.g. "page" or "offset". */
+    param: string;
+    /**
+     * "page" sends an incrementing page number (starting at `start`); "offset"
+     * sends the count of rows already fetched. Defaults to "page".
+     */
+    mode?: 'page' | 'offset';
+    /** Index of the first page in "page" mode (usually 1 or 0). Defaults to 1. */
+    start?: number;
+  };
   /**
    * Maps each output row field to how it is extracted from a raw source
    * record. Defines the row "interface" entirely in config — switching data

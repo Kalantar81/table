@@ -2,6 +2,7 @@
   "dataUrl": "https://fakerapi.it/api/v2/persons",
   "rowsPath": "data",
   "quantityParam": "_quantity",
+  "chunkSize": 500,
   "fields": {
     "id": { "type": "index", "start": 1 },
     "name": { "template": "${firstname} ${lastname}" },
@@ -20,7 +21,7 @@
   "height": "600px",
   "horizontalScroll": true,
   "columns": [
-    { "field": "id", "header": "ID", "sortable": true, "filterable": true, "filterType": "numeric", "width": "90px", "align": "right" },
+    { "field": "id", "header": "ID", "sortable": true, "filterable": true, "filterType": "numeric", "width": "120px", "align": "right" },
     { "field": "name", "header": "Name", "sortable": true, "filterable": true, "filterType": "text", "width": "200px" },
     { "field": "email", "header": "Email", "sortable": true, "filterable": true, "filterType": "text", "width": "240px" },
     { "field": "phone", "header": "Phone", "sortable": true, "filterable": true, "filterType": "text", "width": "170px" },
