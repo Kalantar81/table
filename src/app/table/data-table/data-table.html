@@ -35,7 +35,7 @@
               </button>
             }
           </div>
-          @for (col of columns(); track col.field) {
+          @for (col of displayColumns(); track col.field) {
             <label class="dt-search-cols-item">
               <input
                 type="checkbox"
@@ -81,13 +81,27 @@
   </div>
 
   <div class="dt-head-clip">
-  <div #headEl class="dt-head" role="row" [style.gridTemplateColumns]="columnTracks()">
-    @for (col of columns(); track col.field) {
+  <div
+    #headEl
+    class="dt-head"
+    role="row"
+    [style.gridTemplateColumns]="columnTracks()"
+    cdkDropList
+    cdkDropListOrientation="horizontal"
+    [cdkDropListDisabled]="!reorderableColumns()"
+    (cdkDropListDropped)="onColumnDrop($event)"
+  >
+    @for (col of displayColumns(); track col.field) {
       <div
         class="dt-th"
         role="columnheader"
         [class.dt-sortable]="col.sortable"
+        [class.dt-reorderable]="reorderableColumns()"
         [style.textAlign]="col.align"
+        cdkDrag
+        cdkDragLockAxis="x"
+        cdkDragPreviewContainer="parent"
+        [cdkDragDisabled]="!reorderableColumns()"
         (click)="onSort(col)"
       >
         <span class="dt-th-inner">
@@ -217,7 +231,7 @@
         [style.height.px]="rowHeight()"
         [style.gridTemplateColumns]="columnTracks()"
       >
-        @for (col of columns(); track col.field) {
+        @for (col of displayColumns(); track col.field) {
           <div class="dt-td" role="gridcell" [style.textAlign]="col.align">
             {{ row[col.field] }}
           </div>
@@ -236,7 +250,7 @@
           role="row"
           [style.gridTemplateColumns]="columnTracks()"
         >
-          @for (col of columns(); track col.field) {
+          @for (col of displayColumns(); track col.field) {
             <div class="dt-td" role="gridcell" [style.textAlign]="col.align">
               {{ row[col.field] }}
             </div>

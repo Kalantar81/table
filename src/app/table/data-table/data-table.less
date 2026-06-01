@@ -272,8 +272,6 @@
   display: grid;
   background: var(--dt-header-bg);
   border-bottom: 1px solid var(--dt-border);
-  flex-shrink: 0;
-  z-index: 2;
 }
 
 .dt-th {
@@ -295,6 +293,32 @@
       background: #eef2f7;
     }
   }
+
+  &.dt-reorderable:not(.dt-sortable) {
+    cursor: grab;
+  }
+}
+
+/* Column drag-and-drop reordering (CDK DragDrop). Preview renders inside the
+   header (cdkDragPreviewContainer="parent"), so it inherits .dt-th styling and
+   the :host theme variables; only the lifted look needs overriding here. */
+.dt-th.cdk-drag-preview {
+  border-radius: var(--dt-radius);
+  box-shadow: var(--dt-shadow);
+  cursor: grabbing;
+}
+
+.dt-th.cdk-drag-placeholder {
+  background: var(--dt-primary-soft);
+
+  * {
+    visibility: hidden;
+  }
+}
+
+.cdk-drag-animating,
+.dt-head.cdk-drop-list-dragging .dt-th:not(.cdk-drag-placeholder) {
+  transition: transform 0.2s cubic-bezier(0, 0, 0.2, 1);
 }
 
 .dt-th-inner {

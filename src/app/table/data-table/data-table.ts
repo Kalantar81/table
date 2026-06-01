@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
+import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -39,7 +40,7 @@ const HEAVY_THRESHOLD = 50_000;
 @Component({
   selector: 'app-data-table',
   standalone: true,
-  imports: [CommonModule, FormsModule, ScrollingModule],
+  imports: [CommonModule, FormsModule, ScrollingModule, CdkDropList, CdkDrag],
   templateUrl: './data-table.html',
   styleUrl: './data-table.less',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -62,6 +63,16 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   readonly tableWidth = input<string>('');
   readonly tableHeight = input<string>('');
   readonly horizontalScroll = input<boolean>(false);
+  readonly reorderableColumns = input<boolean>(true);
+
+  /**
+   * User-controlled column order, as a list of fields. Resets to the order of
+   * the `columns` input whenever it changes, then is mutated by drag-and-drop.
+   */
+  readonly columnOrder = linkedSignal<DataTableColumn<T>[], string[]>({
+    source: () => this.columns(),
+    computation: (cols) => cols.map((c) => c.field),
+  });
 
   readonly sort = signal<SortState | null>(null);
   readonly filters = signal<Record<string, ColumnFilterState>>({});
@@ -91,6 +102,17 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
 
   private readonly viewport = viewChild(CdkVirtualScrollViewport);
   private readonly headEl = viewChild<ElementRef<HTMLElement>>('headEl');
+
+  /** Columns in the user-defined display order (driven by `columnOrder`). */
+  readonly displayColumns = computed<DataTableColumn<T>[]>(() => {
+    const cols = this.columns();
+    const order = this.columnOrder();
+    const byField = new Map(cols.map((c) => [c.field, c]));
+    const ordered = order
+      .map((f) => byField.get(f))
+      .filter((c): c is DataTableColumn<T> => !!c);
+    return ordered.length === cols.length ? ordered : cols;
+  });
 
   readonly selectedSearchColumns = computed(() => {
     const selected = this.selectedSearchFields();
@@ -324,10 +346,19 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
     // With horizontal scroll on, columns keep fixed widths so the grid can
     // grow past the container; otherwise they flex to fill the available width.
     const fallback = this.horizontalScroll() ? '150px' : 'minmax(120px, 1fr)';
-    return this.columns()
+    return this.displayColumns()
       .map((c) => c.width ?? fallback)
       .join(' ');
   });
+
+  onColumnDrop(event: CdkDragDrop<DataTableColumn<T>[]>) {
+    if (event.previousIndex === event.currentIndex) return;
+    this.columnOrder.update((order) => {
+      const next = [...order];
+      moveItemInArray(next, event.previousIndex, event.currentIndex);
+      return next;
+    });
+  }
 
   readonly trackRow = computed(() => {
     const userFn = this.trackBy();
