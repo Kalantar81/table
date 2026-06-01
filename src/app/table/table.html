@@ -8,13 +8,21 @@
     @if (loading() && rows().length === 0) {
       <div class="data-loader" role="status" aria-live="polite">
         <span class="spinner" aria-hidden="true"></span>
-        <span>Loading {{ cfg.count }} entities…</span>
+        <span>Loading {{ target() }} entities…</span>
+      </div>
+    } @else if (loadError()) {
+      <div class="data-status data-status-error" role="alert">
+        <span>Failed to load data from {{ cfg.dataUrl }}.</span>
+        <button type="button" class="retry-btn" (click)="retry()">Retry</button>
       </div>
     } @else {
       @if (loading()) {
-        <p class="data-status">Loaded {{ rows().length }} of {{ cfg.count }} entities…</p>
-      } @else if (loadError()) {
-        <p class="data-status data-status-error">Failed to load data from {{ cfg.dataUrl }}.</p>
+        <p class="data-status">Loaded {{ rows().length }} of {{ target() }} entities…</p>
+      } @else if (partial()) {
+        <div class="data-status data-status-warning" role="alert">
+          <span>Loaded only {{ rows().length }} of {{ target() }} entities (connection issue).</span>
+          <button type="button" class="retry-btn" (click)="retry()">Retry</button>
+        </div>
       }
       <app-data-table
         [value]="rows()"

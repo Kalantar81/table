@@ -30,7 +30,12 @@ export class Table {
   readonly rows = signal<TableRow[]>([]);
   /** True while pages are still being fetched (the first ones may already be shown). */
   readonly loading = signal<boolean>(false);
+  /** No data at all could be loaded (the very first chunk failed). */
   readonly loadError = signal<boolean>(false);
+  /** Some rows loaded, but the source was cut short (e.g. a chunk kept failing). */
+  readonly partial = signal<boolean>(false);
+  /** Total rows the current load is aiming for, for progress display. */
+  readonly target = signal<number>(0);
 
   /** Guards against stale in-flight loads when the config changes mid-flight. */
   private loadSeq = 0;
@@ -43,6 +48,11 @@ export class Table {
     });
   }
 
+  /** Re-runs the load with the current config (e.g. after a partial failure). */
+  retry() {
+    this.load(this.config.value());
+  }
+
   /** Streams rows from the configured source, publishing each page as it lands. */
   private async load(cfg: TableConfig | undefined) {
     this.inFlight?.abort();
@@ -50,9 +60,11 @@ export class Table {
 
     this.rows.set([]);
     this.loadError.set(false);
+    this.partial.set(false);
 
     if (!cfg?.dataUrl) {
       this.loading.set(false);
+      this.target.set(0);
       return;
     }
 
@@ -63,6 +75,7 @@ export class Table {
     const pageStart = pagination?.start ?? 1;
     const abort = new AbortController();
     this.inFlight = abort;
+    this.target.set(count);
     this.loading.set(true);
 
     const acc: TableRow[] = [];
@@ -79,25 +92,82 @@ export class Table {
           url.searchParams.set(pagination.param, String(value));
         }
 
-        const res = await fetch(url, { signal: abort.signal });
+        const res = await this.fetchChunk(url, abort.signal);
         if (seq !== this.loadSeq) return; // superseded by a newer config
-        if (!res.ok) break; // e.g. rate-limited (HTTP 429) — keep what we have
+
+        if (!res || !res.ok) {
+          // Chunk failed even after retries: surface a hard error if we have
+          // nothing yet, otherwise keep the rows we did manage to load.
+          if (acc.length === 0) this.loadError.set(true);
+          else this.partial.set(true);
+          break;
+        }
 
         const json: unknown = await res.json();
         if (seq !== this.loadSeq) return;
 
+        const before = acc.length;
         for (const record of extractRows(json, cfg.rowsPath)) {
           acc.push(mapRecord(record, acc.length, cfg.fields));
         }
         // Publish a fresh array so the table re-renders with the new page.
         this.rows.set(acc.slice());
+
+        // Source returned fewer rows than asked — it is exhausted, stop cleanly.
+        if (acc.length === before) break;
       }
     } catch {
-      if (seq === this.loadSeq && !abort.signal.aborted) this.loadError.set(true);
+      if (seq === this.loadSeq && !abort.signal.aborted) {
+        if (acc.length === 0) this.loadError.set(true);
+        else this.partial.set(true);
+      }
     } finally {
       if (seq === this.loadSeq) this.loading.set(false);
     }
   }
 
+  /**
+   * Fetches one chunk, retrying transient failures (network errors, HTTP 429
+   * and 5xx) with exponential backoff. Returns the response (which may still be
+   * a non-ok one the caller treats as failure) or null on a network error that
+   * exhausted all attempts.
+   */
+  private async fetchChunk(
+    url: URL,
+    signal: AbortSignal,
+    attempts = 3,
+  ): Promise<Response | null> {
+    let backoff = 500;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const res = await fetch(url, { signal });
+        if (res.ok) return res;
+        const retryable = res.status === 429 || res.status >= 500;
+        if (!retryable || attempt >= attempts) return res;
+      } catch (err) {
+        if (signal.aborted) throw err;
+        if (attempt >= attempts) return null;
+      }
+      await delay(backoff, signal);
+      backoff *= 2;
+    }
+  }
+
   trackById = (row: TableRow, index: number) => row['id'] ?? index;
+}
+
+/** Resolves after `ms`, or rejects (AbortError) if `signal` aborts first. */
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
 }

@@ -9,6 +9,18 @@ export interface DatasetRequest {
   cols: ColumnMeta[];
 }
 
+/**
+ * Appends freshly-arrived rows to the dataset already held by the worker,
+ * extending its index in place. Only the new tail is sent (not the full set),
+ * so progressive loading stays linear. Ignored if `datasetSeq` is stale.
+ */
+export interface AppendRequest {
+  type: 'append';
+  datasetSeq: number;
+  rows: Record<string, any>[];
+  cols: ColumnMeta[];
+}
+
 /** Asks the worker to filter + sort the current dataset. */
 export interface PipelineRequest {
   type: 'pipeline';
@@ -19,7 +31,7 @@ export interface PipelineRequest {
   sort: SortState | null;
 }
 
-export type WorkerRequest = DatasetRequest | PipelineRequest;
+export type WorkerRequest = DatasetRequest | AppendRequest | PipelineRequest;
 
 /** Resulting row indices for a pipeline request; `indices.buffer` is transferred. */
 export interface PipelineResult {

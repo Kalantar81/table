@@ -75,6 +75,63 @@ export function buildDataset<T extends Record<string, any>>(
   return { rows, rowCount: n, byField, allIndices };
 }
 
+/**
+ * Extends an existing dataset with freshly-arrived rows, reusing the column
+ * indexes already built instead of rebuilding them from scratch. This keeps
+ * chunked/progressive loading linear overall: the costly per-row work (string
+ * lowercasing) runs once per row, not once per row per chunk.
+ */
+export function appendDataset<T extends Record<string, any>>(
+  ds: Dataset<T>,
+  newRows: T[],
+  cols: ColumnMeta[],
+): Dataset<T> {
+  const added = newRows.length;
+  if (added === 0) return ds;
+  const base = ds.rowCount;
+  const n = base + added;
+
+  for (const col of cols) {
+    const idx = ds.byField.get(col.field);
+    if (!idx) continue;
+
+    for (let i = 0; i < added; i++) {
+      const v = newRows[i][col.field];
+      idx.raw.push(v);
+      idx.lower.push(v == null ? '' : String(v).toLowerCase());
+    }
+    if (idx.num) {
+      const num = new Float64Array(n);
+      num.set(idx.num);
+      for (let i = 0; i < added; i++) {
+        const v = newRows[i][col.field];
+        num[base + i] = v == null ? NaN : Number(v);
+      }
+      idx.num = num;
+    }
+    if (idx.ms) {
+      const ms = new Float64Array(n);
+      ms.set(idx.ms);
+      for (let i = 0; i < added; i++) {
+        const v = newRows[i][col.field];
+        ms[base + i] = v == null ? NaN : new Date(v as any).getTime();
+      }
+      idx.ms = ms;
+    }
+    // Stale once new rows arrive; rebuilt lazily on the next categorical filter.
+    idx.categoryIndex = undefined;
+  }
+
+  for (let i = 0; i < added; i++) ds.rows.push(newRows[i]);
+
+  const allIndices = new Uint32Array(n);
+  for (let i = 0; i < n; i++) allIndices[i] = i;
+
+  ds.rowCount = n;
+  ds.allIndices = allIndices;
+  return ds;
+}
+
 /** Runs filtering then sorting and returns the resulting row indices. */
 export function runPipeline<T>(
   ds: Dataset<T>,

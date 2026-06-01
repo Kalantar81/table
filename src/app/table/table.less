@@ -69,3 +69,35 @@ app-data-table {
     transform: rotate(360deg);
   }
 }
+
+.data-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+  color: #64748b;
+  font-size: 0.9rem;
+
+  &-error {
+    color: #b91c1c;
+  }
+
+  &-warning {
+    color: #b45309;
+  }
+}
+
+.retry-btn {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  padding: 0.2rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+}

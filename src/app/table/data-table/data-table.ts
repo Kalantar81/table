@@ -26,6 +26,7 @@ import {
   matchModesFor,
 } from './data-table-types';
 import {
+  appendDataset,
   buildDataset,
   Dataset,
   EMPTY_INDICES,
@@ -96,6 +97,15 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   private pipelineSeq = 0;
   private datasetRaf = 0;
   private pipelineRaf = 0;
+
+  /**
+   * Last `value`/`columns` handed to the dataset builder. Used to recognise
+   * when a new `value` is just the previous one with rows appended (chunked
+   * loading), so only the new tail is rebuilt instead of the whole dataset.
+   */
+  private lastRows: T[] | null = null;
+  private lastLen = 0;
+  private lastCols: DataTableColumn<T>[] | null = null;
 
   /** Off-main-thread filter/sort engine; null when Worker is unavailable (SSR/tests). */
   private readonly worker = createPipelineWorker();
@@ -172,35 +182,63 @@ export class DataTable<T extends Record<string, any> = any> implements OnDestroy
   }
 
   private scheduleDatasetBuild(rows: T[], cols: DataTableColumn<T>[]) {
-    const seq = ++this.datasetSeq;
     if (this.datasetRaf) cancelAnimationFrame(this.datasetRaf);
     this.datasetRaf = 0;
+
+    // An append is the previous value with rows added at the end: same columns,
+    // strictly longer, and the shared prefix's endpoints are identity-equal.
+    const prevRows = this.lastRows;
+    const prevLen = this.lastLen;
+    const isAppend =
+      cols === this.lastCols &&
+      prevRows !== null &&
+      prevLen > 0 &&
+      rows.length > prevLen &&
+      rows[0] === prevRows[0] &&
+      rows[prevLen - 1] === prevRows[prevLen - 1];
+
+    this.lastRows = rows;
+    this.lastLen = rows.length;
+    this.lastCols = cols;
 
     const heavy = rows.length >= HEAVY_THRESHOLD;
 
     if (this.worker) {
-      // Hand the rows off to the worker, which owns the full search index.
-      // The main thread keeps only a thin dataset for rendering paged rows.
+      // The worker owns the full search index; the main thread keeps only a
+      // thin dataset for rendering paged rows. On append we ship just the new
+      // tail so the worker extends its index instead of rebuilding it.
       if (heavy) this.loading.set(true);
+      const meta = cols.map((c) => ({
+        field: c.field,
+        filterType: c.filterType,
+        collator: c.collator,
+      }));
       ++this.pipelineSeq;
-      this.worker.postMessage({
-        type: 'dataset',
-        datasetSeq: seq,
-        rows,
-        cols: cols.map((c) => ({ field: c.field, filterType: c.filterType, collator: c.collator })),
-      });
+      if (isAppend) {
+        this.worker.postMessage({
+          type: 'append',
+          datasetSeq: this.datasetSeq,
+          rows: rows.slice(prevLen),
+          cols: meta,
+        });
+      } else {
+        this.worker.postMessage({ type: 'dataset', datasetSeq: ++this.datasetSeq, rows, cols: meta });
+      }
       this.dataset.set({ rows, rowCount: rows.length, byField: new Map(), allIndices: EMPTY_INDICES });
       return;
     }
 
+    const seq = ++this.datasetSeq;
     const run = () => {
       this.datasetRaf = 0;
       if (seq !== this.datasetSeq) return;
-      const ds = buildDataset(rows, cols);
+      const prev = this.dataset();
+      const ds =
+        isAppend && prev ? appendDataset(prev, rows.slice(prevLen), cols) : buildDataset(rows, cols);
       ++this.pipelineSeq;
       if (this.pipelineRaf) cancelAnimationFrame(this.pipelineRaf);
       this.pipelineRaf = 0;
-      this.dataset.set(ds);
+      this.dataset.set(isAppend && prev ? { ...ds } : ds);
     };
 
     if (heavy) {

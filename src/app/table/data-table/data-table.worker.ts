@@ -1,6 +1,12 @@
 /// <reference lib="webworker" />
 
-import { buildDataset, Dataset, EMPTY_INDICES, runPipeline } from './data-table.pipeline';
+import {
+  appendDataset,
+  buildDataset,
+  Dataset,
+  EMPTY_INDICES,
+  runPipeline,
+} from './data-table.pipeline';
 import { PipelineResult, WorkerRequest } from './data-table.worker-types';
 
 let dataset: Dataset<Record<string, any>> | null = null;
@@ -10,6 +16,14 @@ addEventListener('message', ({ data }: MessageEvent<WorkerRequest>) => {
   if (data.type === 'dataset') {
     datasetSeq = data.datasetSeq;
     dataset = buildDataset(data.rows, data.cols);
+    return;
+  }
+
+  if (data.type === 'append') {
+    // Extend the current dataset in place; drop appends for a dataset we no
+    // longer hold (a newer 'dataset' message has superseded it).
+    if (!dataset || data.datasetSeq !== datasetSeq) return;
+    dataset = appendDataset(dataset, data.rows, data.cols);
     return;
   }
 
