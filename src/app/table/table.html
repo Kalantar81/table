@@ -5,6 +5,11 @@
   </header>
 
   @if (config.value(); as cfg) {
+    @if (data.isLoading()) {
+      <p class="data-status">Loading {{ cfg.count }} entities…</p>
+    } @else if (data.error()) {
+      <p class="data-status data-status-error">Failed to load data from {{ cfg.dataUrl }}.</p>
+    }
     <app-data-table
       [value]="customers()"
       [columns]="cfg.columns"

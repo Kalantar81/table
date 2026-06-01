@@ -8,6 +8,16 @@ import { DataTableColumn } from './data-table/data-table-types';
 export interface TableConfig<T = any> {
   /** Columns to render. Their count and order define the table layout. */
   columns: DataTableColumn<T>[];
+  /**
+   * URL of the online source the row data is fetched from. When omitted, no
+   * data is requested.
+   */
+  dataUrl?: string;
+  /**
+   * How many entities to load from `dataUrl`. Capped at 100 000 by the host
+   * component; the source is paged to reach this amount.
+   */
+  count?: number;
   /** Page-size options shown in the rows-per-page selector. */
   rowsPerPageOptions?: number[];
   /** Initially selected page size. */

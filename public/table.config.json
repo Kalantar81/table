@@ -1,4 +1,6 @@
 {
+  "dataUrl": "https://fakerapi.it/api/v2/persons",
+  "count": 10000,
   "rowsPerPageOptions": [25, 50, 100, 250, 500],
   "initialRows": 100,
   "rowHeight": 40,
@@ -8,11 +10,11 @@
   "horizontalScroll": true,
   "columns": [
     { "field": "id", "header": "ID", "sortable": true, "filterable": true, "filterType": "numeric", "width": "90px", "align": "right" },
-    { "field": "name", "header": "Name", "sortable": true, "filterable": true, "filterType": "text" },
-    { "field": "country", "header": "Country", "sortable": true, "filterable": true, "filterType": "text", "width": "140px" },
-    { "field": "company", "header": "Company", "sortable": true, "filterable": true, "filterType": "text" },
-    { "field": "status", "header": "Status", "sortable": true, "filterable": true, "filterType": "text", "width": "140px" },
-    { "field": "balance", "header": "Balance", "sortable": true, "filterable": true, "filterType": "numeric", "width": "140px", "align": "right" },
-    { "field": "joined", "header": "Joined", "sortable": true, "filterable": true, "filterType": "date", "width": "140px" }
+    { "field": "name", "header": "Name", "sortable": true, "filterable": true, "filterType": "text", "width": "200px" },
+    { "field": "email", "header": "Email", "sortable": true, "filterable": true, "filterType": "text", "width": "240px" },
+    { "field": "phone", "header": "Phone", "sortable": true, "filterable": true, "filterType": "text", "width": "170px" },
+    { "field": "gender", "header": "Gender", "sortable": true, "filterable": true, "filterType": "text", "width": "120px" },
+    { "field": "country", "header": "Country", "sortable": true, "filterable": true, "filterType": "text", "width": "180px" },
+    { "field": "birthday", "header": "Birthday", "sortable": true, "filterable": true, "filterType": "date", "width": "140px" }
   ]
 }
