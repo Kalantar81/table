@@ -3,27 +3,7 @@ import { httpResource } from '@angular/common/http';
 
 import { DataTable } from './data-table/data-table';
 import { TableConfig } from './table-config';
-
-interface Customer {
-  id: number;
-  name: string;
-  email: string;
-  phone: string;
-  gender: string;
-  country: string;
-  birthday: string;
-}
-
-/** FakerAPI person, as returned by https://fakerapi.it/api/v2/persons. */
-interface FakerPerson {
-  firstname: string;
-  lastname: string;
-  email: string;
-  phone: string;
-  gender: string;
-  birthday: string;
-  address?: { country?: string };
-}
+import { extractRows, mapRecord, TableRow } from './field-mapping';
 
 /** Hard ceiling on how many rows we will request, regardless of config. */
 const MAX_ENTITIES = 100_000;
@@ -38,12 +18,13 @@ const PAGE_SIZE = 1000;
   styleUrl: './table.less',
 })
 export class Table {
-  /** Table layout (columns, page sizes…) loaded at runtime from public/table.config.json. */
-  readonly config = httpResource<TableConfig<Customer>>(() => 'table.config.json');
+  /** Table layout (columns, page sizes, row mapping…) loaded at runtime from public/table.config.json. */
+  readonly config = httpResource<TableConfig>(() => 'table.config.json');
 
   /**
-   * Rows fetched from the configured online source. FakerAPI returns at most
-   * 1000 rows per request, so we page through it until `count` (capped at
+   * Rows fetched from the configured online source and shaped according to the
+   * config's `fields` mapping, so the row interface is fully data-driven. The
+   * source is paged (PAGE_SIZE rows per request) until `count` (capped at
    * MAX_ENTITIES) rows are collected.
    */
   readonly data = resource({
@@ -53,32 +34,29 @@ export class Table {
       return {
         url: cfg.dataUrl,
         count: Math.min(Math.max(cfg.count ?? 0, 0), MAX_ENTITIES),
+        rowsPath: cfg.rowsPath,
+        quantityParam: cfg.quantityParam ?? '_quantity',
+        fields: cfg.fields,
       };
     },
     loader: async ({ params, abortSignal }) => {
-      const rows: Customer[] = [];
+      const rows: TableRow[] = [];
       for (let fetched = 0; fetched < params.count; fetched += PAGE_SIZE) {
         const quantity = Math.min(PAGE_SIZE, params.count - fetched);
-        const res = await fetch(`${params.url}?_quantity=${quantity}`, { signal: abortSignal });
+        const url = new URL(params.url);
+        if (params.quantityParam) url.searchParams.set(params.quantityParam, String(quantity));
+        const res = await fetch(url, { signal: abortSignal });
         if (!res.ok) break; // e.g. rate-limited (HTTP 429) — keep what we already have
-        const json: { data?: FakerPerson[] } = await res.json();
-        for (const p of json.data ?? []) {
-          rows.push({
-            id: rows.length + 1,
-            name: `${p.firstname} ${p.lastname}`,
-            email: p.email,
-            phone: p.phone,
-            gender: p.gender,
-            country: p.address?.country ?? '',
-            birthday: p.birthday,
-          });
+        const json: unknown = await res.json();
+        for (const record of extractRows(json, params.rowsPath)) {
+          rows.push(mapRecord(record, rows.length, params.fields));
         }
       }
       return rows;
     },
   });
 
-  readonly customers = computed<Customer[]>(() => this.data.value() ?? []);
+  readonly rows = computed<TableRow[]>(() => this.data.value() ?? []);
 
-  trackById = (row: Customer) => row.id;
+  trackById = (row: TableRow, index: number) => row['id'] ?? index;
 }

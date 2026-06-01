@@ -11,7 +11,7 @@
       <p class="data-status data-status-error">Failed to load data from {{ cfg.dataUrl }}.</p>
     }
     <app-data-table
-      [value]="customers()"
+      [value]="rows()"
       [columns]="cfg.columns"
       [virtualScroll]="cfg.virtualScroll ?? true"
       [rowHeight]="cfg.rowHeight ?? 41"

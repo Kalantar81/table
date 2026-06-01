@@ -1,11 +1,12 @@
 import { DataTableColumn } from './data-table/data-table-types';
+import { FieldMapping, TableRow } from './field-mapping';
 
 /**
  * Runtime table configuration loaded from `public/table.config.json`.
  * Drives how many columns are shown, their header titles, and the
  * rows-per-page options — without rebuilding the app.
  */
-export interface TableConfig<T = any> {
+export interface TableConfig<T = TableRow> {
   /** Columns to render. Their count and order define the table layout. */
   columns: DataTableColumn<T>[];
   /**
@@ -13,6 +14,23 @@ export interface TableConfig<T = any> {
    * data is requested.
    */
   dataUrl?: string;
+  /**
+   * Dot-notation path inside the fetched JSON where the row array lives, e.g.
+   * "data". When omitted, the response itself is expected to be the array.
+   */
+  rowsPath?: string;
+  /**
+   * Name of the query parameter used to request a page size from `dataUrl`.
+   * Defaults to "_quantity" (FakerAPI). Set to "" to disable paging params.
+   */
+  quantityParam?: string;
+  /**
+   * Maps each output row field to how it is extracted from a raw source
+   * record. Defines the row "interface" entirely in config — switching data
+   * sources only requires editing this. When omitted, raw records are used
+   * as-is. The keys here should match the `field`s used by `columns`.
+   */
+  fields?: Record<string, FieldMapping>;
   /**
    * How many entities to load from `dataUrl`. Capped at 100 000 by the host
    * component; the source is paged to reach this amount.

@@ -1,5 +1,16 @@
 {
   "dataUrl": "https://fakerapi.it/api/v2/persons",
+  "rowsPath": "data",
+  "quantityParam": "_quantity",
+  "fields": {
+    "id": { "type": "index", "start": 1 },
+    "name": { "template": "${firstname} ${lastname}" },
+    "email": "email",
+    "phone": "phone",
+    "gender": "gender",
+    "country": { "path": "address.country", "default": "" },
+    "birthday": "birthday"
+  },
   "count": 10000,
   "rowsPerPageOptions": [25, 50, 100, 250, 500],
   "initialRows": 100,
